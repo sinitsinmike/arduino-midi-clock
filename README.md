@@ -1,4 +1,33 @@
 # Arduino MIDI clock with tap tempo
+NEW:
+
+ * Quick guide (Arduino Nano, MIDI out on D1/TX0 — НЕ открывайте Serial Monitor):
+ * - TAP короткие: задать BPM (≥3 тапа).
+ * - TAP ≥5 c: ClockOnlyWhenPlay (CALL ↔ CPLY), сохраняется в EEPROM.
+ * - A1 короткое: Start/Stop (одна кнопка).
+ * - A1 ≥3 c: калибровка центра нуджа ("CAL").
+ * - TAP + A1 ≥4 c: LOCK/UNLK нудж, сохраняется в EEPROM.
+ * - (опция) Фаза: мигает средний сегмент (SEG_G) у 1-й слева цифры раз в такт.
+  
+  
+ * ======================= MIDI CLOCK — V3.3 (Beat on left-G segment opt.) ======================= *
+ * File: MIDI_CLOCK_V3_3.ino
+ * FW_VERSION: "V3.3"   Build: __DATE__ __TIME__
+ *
+ * Compile-time switches (по умолчанию ОТКЛЮЧЕНО):
+ *   // #define ENABLE_SYNC 1               // SYNC-выход + меню делителя/полярности
+ *   // #define ENABLE_A1_DOUBLECLICK 1     // A1 double-click = Restart from bar 1 (SPP=0+Start)
+ *   // #define ENABLE_BEAT_SEG 1           // мигание сегмента G у левой цифры раз в такт
+ *   // #define BEAT_SEG_ONLY_WHEN_PLAY 1   // если включить — мигает ТОЛЬКО в PLAY
+
+
+
+   
+
+
+
+
+OLD:
 
 As seen on LittleBits:
 http://littlebits.cc/projects/littlebits-arduino-midi-master-clock-with-tap-tempo
