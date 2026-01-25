@@ -1,7 +1,14 @@
-// file: MIDI-Clock_nudge_like_original_speed_var.ino
+// file: MIDI-Clock_nudge_like_original_speed_var_v0_9.ino
+// FW tag: quadratic nudge on A0, ~4 BPM/s max, FALLING tap, TM1637 shows integer BPM
+// Built: __DATE__ __TIME__
+
 #include <TimerOne.h>
 
-/* MIDI port abstraction */
+/* ===== Firmware version tag ===== */
+#define FW_NAME     "MIDI-Clock nudge"
+#define FW_VERSION  "0.9 (quadratic nudge, ~4 BPM/s, DEAD_ZONE=50)"
+
+/* ===== MIDI port abstraction ===== */
 #if defined(UBRR1H) || defined(SERIAL_PORT_HARDWARE1)
   #define HAVE_HW_MIDI 1
   #define MIDI_SERIAL Serial1
@@ -9,26 +16,26 @@
   #include <SoftwareSerial.h>
   #define HAVE_HW_MIDI 0
   const uint8_t MIDI_RX_UNUSED = 7;
-  const uint8_t MIDI_TX_PIN    = 6;   // → DIN-5 pin 5 через 220 Ω
+  const uint8_t MIDI_TX_PIN    = 6;   // → DIN-5 pin 5 via ~220 Ω
   SoftwareSerial MIDI_SERIAL(MIDI_RX_UNUSED, MIDI_TX_PIN);
 #endif
 
-/* TAP */
+/* ===== TAP ===== */
 #define TAP_PIN 2
 #define TAP_PIN_POLARITY FALLING
 #define MINIMUM_TAPS 3
 #define EXIT_MARGIN 150
 
-/* ABSOLUTE BPM INPUT — OFF */
+/* ===== ABSOLUTE BPM INPUT — OFF (avoid conflict with nudge) ===== */
 // #define DIMMER_INPUT_PIN A0
 #define DIMMER_CHANGE_MARGIN 20
 
-/* NUDGE (A0: влево↓, вправо↑, центр=стоп), скорость растёт к краям */
+/* ===== NUDGE on A0 (left↓, right↑, center=stop) ===== */
 #define DIMMER_CHANGE_PIN A0
 #define DEAD_ZONE 50
-#define NUDGE_MAX_SPEED_TENTHS 200   // ↑ было 100 → теперь ≈4 BPM/с на краю
+#define NUDGE_MAX_SPEED_TENTHS 200   // max speed at edge: 20.0 tenths BPM/s = ~4 BPM/s
 
-/* Индикация */
+/* ===== Indicators ===== */
 #define BLINK_OUTPUT_PIN 5
 #define BLINK_PIN_POLARITY 0
 #define BLINK_TIME 4
@@ -36,23 +43,23 @@
 #define SYNC_OUTPUT_PIN 9
 #define SYNC_PIN_POLARITY 0
 
-/* Start/Stop */
+/* ===== Start/Stop ===== */
 #define START_STOP_INPUT_PIN A1
 #define START_STOP_PIN_POLARITY 0
 #define MIDI_START 0xFA
 #define MIDI_STOP  0xFC
 #define DEBOUNCE_INTERVAL 500L // ms
 
-/* EEPROM */
+/* ===== EEPROM ===== */
 #define EEPROM_ADDRESS 0
 #ifdef EEPROM_ADDRESS
   #include <EEPROM.h>
 #endif
 
-/* MIDI forwarding */
+/* ===== MIDI forwarding ===== */
 #define MIDI_FORWARD
 
-/* TM1637 */
+/* ===== TM1637 ===== */
 #define TM1637_DISPLAY
 #ifdef TM1637_DISPLAY
   #include <TM1637Display.h>
@@ -61,14 +68,21 @@
   #define TM1637_BRIGHTNESS 0x0f
 #endif
 
-/* General */
+/* ===== General ===== */
 #define MIDI_TIMING_CLOCK 0xF8
 #define CLOCKS_PER_BEAT 24
-#define MINIMUM_BPM 400     // 40.0 BPM (в десятых)
-#define MAXIMUM_BPM 3000    // 300.0 BPM (в десятых)
+#define MINIMUM_BPM 400     // 40.0 BPM (tenths)
+#define MAXIMUM_BPM 3000    // 300.0 BPM (tenths)
+
+/* ===== Compile-time guard against pin conflicts ===== */
+#ifdef DIMMER_INPUT_PIN
+  #if (DIMMER_INPUT_PIN == DIMMER_CHANGE_PIN)
+    #error "DIMMER_INPUT_PIN conflicts with DIMMER_CHANGE_PIN. Disable one or change pins."
+  #endif
+#endif
 
 long intervalMicroSeconds;
-int bpm;  // десятые BPM (1200 = 120.0)
+int bpm;  // tenths BPM (e.g., 1200 = 120.0)
 
 long minimumTapInterval = 60L * 1000 * 1000 * 10 / MAXIMUM_BPM;
 long maximumTapInterval = 60L * 1000 * 1000 * 10 / MINIMUM_BPM;
@@ -104,12 +118,17 @@ void setup() {
   Serial.begin(38400);
   MIDI_SERIAL.begin(31250);
 
+  Serial.println();
+  Serial.print(FW_NAME); Serial.print(" ");
+  Serial.print(FW_VERSION); Serial.print(" | Built: ");
+  Serial.print(__DATE__); Serial.print(" "); Serial.println(__TIME__);
+
   pinMode(BLINK_OUTPUT_PIN, OUTPUT);
   pinMode(SYNC_OUTPUT_PIN, OUTPUT);
   pinMode(START_STOP_INPUT_PIN, INPUT);
-  pinMode(DIMMER_CHANGE_PIN, INPUT);
+  pinMode(DIMMER_CHANGE_PIN, INPUT);   // explicit A0
 
-  pinMode(TAP_PIN, INPUT_PULLUP);
+  pinMode(TAP_PIN, INPUT_PULLUP);      // FALLING + button to GND
   attachInterrupt(digitalPinToInterrupt(TAP_PIN), tapInput, TAP_PIN_POLARITY);
 
 #ifdef EEPROM_ADDRESS
@@ -125,7 +144,7 @@ void setup() {
 
 #ifdef TM1637_DISPLAY
   display.setBrightness(TM1637_BRIGHTNESS);
-  setDisplayValue(bpm);
+  setDisplayValue(bpm); // integer BPM
 #endif
 }
 
@@ -147,15 +166,15 @@ void loop() {
   }
 #endif
 
-/* NUDGE: квадратичная кривая скорости + аккумулятор дробей */
+/* NUDGE on A0: quadratic speed + fractional accumulator */
 #ifdef DIMMER_CHANGE_PIN
   static bool init = false;
   static unsigned long lastMs = 0;
-  static long accum01 = 0;                 // «0.1 BPM × мс»
+  static long accum01 = 0;                 // "0.1 BPM × ms"
 
   unsigned long ms = millis();
   if (!init) { init = true; lastMs = ms; }
-  unsigned long dt = ms - lastMs;          // мс с последнего обновления
+  unsigned long dt = ms - lastMs;          // ms since last update
 
   int v = analogRead(DIMMER_CHANGE_PIN);   // 0..1023
   int delta  = v - 512;
@@ -165,10 +184,10 @@ void loop() {
     if (dt > 0) {
       long range = 512 - DEAD_ZONE;               // >0
       long eff   = adelta - DEAD_ZONE;            // 1..range
-      long speed_tenths = (long)NUDGE_MAX_SPEED_TENTHS * eff * eff / (range * range); // 0.1 BPM/с
+      long speed_tenths = (long)NUDGE_MAX_SPEED_TENTHS * eff * eff / (range * range); // 0.1 BPM/s
 
-      accum01 += speed_tenths * (long)dt;         // интегрируем за dt
-      int steps = (int)(accum01 / 1000);          // десятые BPM
+      accum01 += speed_tenths * (long)dt;         // integrate over dt
+      int steps = (int)(accum01 / 1000);          // tenths BPM
       accum01 %= 1000;
 
       if (steps) {
@@ -181,7 +200,7 @@ void loop() {
       lastMs = ms;
     }
   } else {
-    accum01 = 0;                                   // мёртвая зона → стоп
+    accum01 = 0;                                   // stop in dead zone
     lastMs  = ms;
   }
 #endif
@@ -193,7 +212,7 @@ void loop() {
     lastStartStopTime = now;
   }
 
-/* MIDI forward */
+/* MIDI forwarding */
 #ifdef MIDI_FORWARD
   while (MIDI_SERIAL.available()) {
     int b = MIDI_SERIAL.read();
@@ -201,7 +220,7 @@ void loop() {
   }
 #endif
 
-/* SoftSerial: выгрузка тиков вне ISR */
+/* SoftSerial: flush ticks outside ISR */
 #if !HAVE_HW_MIDI
   noInterrupts();
   uint8_t ticks = pendingClocks;
@@ -213,7 +232,7 @@ void loop() {
 
 void tapInput() {
   long now = micros();
-  if (now - lastTapTime < minimumTapInterval) return;
+  if (now - lastTapTime < minimumTapInterval) return; // debounce by time
   if (timesTapped == 0) firstTapTime = now;
   timesTapped++;
   lastTapTime = now;
@@ -227,9 +246,9 @@ void startOrStop() {
 
 void sendClockPulse() {
 #if HAVE_HW_MIDI
-  MIDI_SERIAL.write(MIDI_TIMING_CLOCK);
+  MIDI_SERIAL.write(MIDI_TIMING_CLOCK);    // HW UART: safe in ISR
 #else
-  pendingClocks++;
+  pendingClocks++;                         // SoftSerial: accumulate only
 #endif
 
   blinkCount = (blinkCount + 1) % CLOCKS_PER_BEAT;
@@ -249,7 +268,7 @@ void updateBpm(long /*now*/) {
   EEPROM.write(EEPROM_ADDRESS + 1, bpm % 256);
 #endif
 #ifdef TM1637_DISPLAY
-  setDisplayValue(bpm);
+  setDisplayValue(bpm);  // integer BPM
 #endif
 }
 
