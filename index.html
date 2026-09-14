@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Arduino MIDI Clock — компактный MIDI master clock с Tap Tempo, BPM, Start/Stop, EEPROM и опциональным SYNC OUT.">
+<title>Arduino MIDI Clock — Michael Sinitsin</title>
+<style>
+:root{--bg:#0b0d10;--panel:#14181d;--panel2:#101419;--text:#eef2f6;--muted:#a9b2bc;--line:#29313a;--accent:#62d6a7;--warn:#ffd166;--max:1080px;--r:18px}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 15% 0%,rgba(98,214,167,.12),transparent 30rem),radial-gradient(circle at 85% 10%,rgba(122,167,255,.10),transparent 28rem),var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.6}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}.wrap{width:min(calc(100% - 32px),var(--max));margin:auto}
+header{padding:72px 0 48px;border-bottom:1px solid var(--line)}.eyebrow{display:inline-block;padding:6px 11px;border:1px solid rgba(98,214,167,.35);border-radius:999px;color:var(--accent);font-size:.82rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:18px}
+h1{margin:0;max-width:850px;font-size:clamp(2.4rem,7vw,5.4rem);line-height:.98;letter-spacing:-.055em}.lead{max-width:780px;margin:24px 0 0;color:var(--muted);font-size:clamp(1.05rem,2vw,1.3rem)}
+.buttons{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px}.button{display:inline-flex;padding:11px 16px;border:1px solid var(--line);border-radius:12px;color:var(--text);background:var(--panel);font-weight:650}.button.primary{background:var(--accent);color:#07110d;border-color:var(--accent)}
+section{padding:54px 0}h2{margin:0 0 22px;font-size:clamp(1.7rem,4vw,2.5rem);letter-spacing:-.035em}h3{margin:0 0 10px;font-size:1.1rem}p{margin:0 0 14px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.card{padding:22px;background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:var(--r)}.card p,.card li{color:var(--muted)}
+.icon{width:38px;height:38px;display:grid;place-items:center;margin-bottom:16px;border-radius:11px;background:rgba(98,214,167,.1);color:var(--accent);font-weight:800}
+.specs{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}.spec{display:grid;grid-template-columns:150px 1fr;gap:18px;padding:15px 18px;border-bottom:1px solid var(--line)}.spec:nth-last-child(-n+2){border-bottom:0}.spec:nth-child(odd){border-right:1px solid var(--line)}.spec span{color:var(--muted)}
+table{width:100%;border-collapse:collapse;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--panel2)}th,td{padding:14px 16px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}th{background:var(--panel)}td{color:var(--muted)}tr:last-child td{border-bottom:0}
+code{padding:2px 6px;border-radius:6px;background:#090c0f;color:#d8e4ef;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em}
+.note{padding:18px 20px;border-left:3px solid var(--warn);background:rgba(255,209,102,.06);border-radius:0 12px 12px 0;color:var(--muted)}
+.contact{display:grid;grid-template-columns:.8fr 1.2fr;gap:16px}.contact-list{list-style:none;margin:0;padding:0}.contact-list li{padding:10px 0;border-bottom:1px solid var(--line)}.contact-list li:last-child{border:0}.label{display:block;color:var(--muted);font-size:.82rem}
+footer{padding:30px 0 44px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem}
+@media(max-width:780px){.grid,.contact,.specs{grid-template-columns:1fr}.spec:nth-child(odd){border-right:0}.spec:nth-last-child(-n+2){border-bottom:1px solid var(--line)}.spec:last-child{border-bottom:0}.spec{grid-template-columns:120px 1fr}header{padding-top:48px}}
+@media(max-width:520px){.wrap{width:min(calc(100% - 22px),var(--max))}.spec{grid-template-columns:1fr;gap:3px}th,td{padding:11px 12px}}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+<div class="eyebrow">DIY MIDI / Arduino / Open Source</div>
+<h1>Arduino MIDI Clock</h1>
+<p class="lead">Компактный MIDI master clock для синтезаторов, драм-машин и другого MIDI-оборудования. Темп задаётся потенциометром или Tap Tempo, Start/Stop управляется одной кнопкой, настройки сохраняются в EEPROM. Дополнительный SYNC OUT можно включить отдельно.</p>
+<div class="buttons">
+<a class="button primary" href="https://github.com/sinitsinmike/arduino-midi-clock" target="_blank" rel="noopener">GitHub проекта</a>
+<a class="button" href="#controls">Управление</a><a class="button" href="#contacts">Контакты</a>
+</div>
+</div></header>
+
+<main>
+<section><div class="wrap"><h2>О проекте</h2><div class="grid">
+<article class="card"><div class="icon">M</div><h3>MIDI Clock</h3><p>Аппаратный MIDI clock на стандартной скорости MIDI 31 250 бод. Clock формируется аппаратным таймером и передаётся через D1/TX0.</p></article>
+<article class="card"><div class="icon">T</div><h3>Tap Tempo</h3><p>Несколько коротких нажатий TAP позволяют быстро задать темп без изменения положения потенциометра.</p></article>
+<article class="card"><div class="icon">B</div><h3>BPM Display</h3><p>4-разрядный TM1637 показывает текущий BPM и сообщения режимов PLAY, STOP, CAL, LOCK/UNLK и другие.</p></article>
+<article class="card"><div class="icon">E</div><h3>EEPROM</h3><p>BPM, состояние блокировки потенциометра и Clock Only When PLAY сохраняются между выключениями питания.</p></article>
+<article class="card"><div class="icon">C</div><h3>Нудж BPM</h3><p>Потенциометр на A0 плавно корректирует BPM относительно откалиброванного центрального положения.</p></article>
+<article class="card"><div class="icon">S</div><h3>SYNC OUT</h3><p>Опциональный выход синхронизации. Функция компилируется отдельно и может быть полностью исключена из прошивки.</p></article>
+</div></div></section>
+
+<section id="controls"><div class="wrap"><h2>Управление</h2>
+<table><thead><tr><th>Орган управления</th><th>Действие</th><th>Результат</th></tr></thead><tbody>
+<tr><td><code>TAP</code> — D2</td><td>≥ 3 коротких нажатий</td><td>Расчёт нового BPM по интервалам между нажатиями.</td></tr>
+<tr><td><code>TAP</code> — D2</td><td>Удержание ≥ 5 секунд</td><td>Переключение <strong>Clock Only When PLAY</strong>. Режим сохраняется в EEPROM.</td></tr>
+<tr><td><code>A1</code></td><td>Короткое нажатие</td><td>Переключение <strong>PLAY / STOP</strong> с MIDI Real-Time Start/Stop.</td></tr>
+<tr><td><code>A1</code></td><td>Удержание ≥ 3 секунд</td><td>Калибровка центра потенциометра. На дисплее появляется <strong>CAL</strong>.</td></tr>
+<tr><td><code>TAP + A1</code></td><td>Удержание ≥ 4 секунд</td><td>Переключение <strong>LOCK / UNLK</strong> потенциометра. Состояние сохраняется в EEPROM.</td></tr>
+<tr><td>Потенциометр — A0</td><td>Поворот</td><td>Плавное изменение BPM относительно сохранённого центра, если нудж не заблокирован.</td></tr>
+</tbody></table>
+<div style="height:16px"></div>
+<div class="note"><strong>Clock Only When PLAY:</strong> при включённом режиме MIDI Clock передаётся только во время PLAY. При выключенном режиме Clock работает постоянно.</div>
+</div></section>
+
+<section><div class="wrap"><h2>Калибровка и защита потенциометра</h2><div class="grid">
+<article class="card"><h3>Калибровка центра</h3><p>Перед калибровкой пользователь может оставить потенциометр в любом желаемом положении. Удержание A1 около 3 секунд измеряет текущее положение и сохраняет его как новый центр.</p></article>
+<article class="card"><h3>LOCK</h3><p>Удержание TAP + A1 не менее 4 секунд отключает влияние потенциометра на BPM и защищает темп от случайного поворота ручки.</p></article>
+<article class="card"><h3>UNLK</h3><p>Повторное удержание TAP + A1 не менее 4 секунд снова разрешает управление BPM потенциометром.</p></article>
+</div></div></section>
+
+<section><div class="wrap"><h2>SYNC OUT — дополнительный режим</h2>
+<p style="color:var(--muted);max-width:800px">SYNC является опциональной частью прошивки. В проекте функция защищена compile-time переключателем, поэтому при необходимости её можно полностью удалить из собранного кода.</p>
+<div style="height:18px"></div><div class="grid">
+<article class="card"><h3>Делитель</h3><p>Доступны варианты <strong>1/2, 1/4, 1/8 и 1/16</strong>. Настройка выбирается в SYNC menu.</p></article>
+<article class="card"><h3>Полярность</h3><p>Полярность SYNC можно инвертировать отдельным пунктом настройки. Значение хранится в EEPROM.</p></article>
+<article class="card"><h3>Импульс</h3><p>Ширина SYNC pulse фиксирована на <strong>15 мс</strong>.</p></article>
+</div><div style="height:18px"></div>
+<div class="card"><h3>Вход в SYNC menu</h3><p>Удерживайте одновременно <strong>TAP + A1</strong>. При включённом SYNC меню используется отдельный режим настройки делителя и полярности. Выход происходит автоматически после <strong>10 секунд</strong> бездействия.</p></div>
+</div></section>
+
+<section><div class="wrap"><h2>Аппаратная конфигурация</h2>
+<div class="specs">
+<div class="spec"><strong>MCU</strong><span>Arduino Nano / ATmega328P-совместимая плата</span></div>
+<div class="spec"><strong>MIDI OUT</strong><span>D1 / TX0, 31 250 бод</span></div>
+<div class="spec"><strong>TAP</strong><span>D2</span></div>
+<div class="spec"><strong>Start / Stop</strong><span>A1</span></div>
+<div class="spec"><strong>BPM Nudge</strong><span>A0, потенциометр</span></div>
+<div class="spec"><strong>Tempo LED</strong><span>D5</span></div>
+<div class="spec"><strong>Display</strong><span>TM1637, 4 разряда</span></div>
+<div class="spec"><strong>SYNC OUT</strong><span>D8 при включённом ENABLE_SYNC</span></div>
+</div><div style="height:18px"></div>
+<div class="note"><strong>MIDI TX:</strong> D1/TX0 используется непосредственно как MIDI-передатчик. Не открывайте Serial Monitor во время работы устройства, поскольку этот аппаратный UART используется для MIDI.</div>
+</div></section>
+
+<section><div class="wrap"><h2>Программные опции</h2><div class="grid">
+<article class="card"><h3>SYNC</h3><p><code>// #define ENABLE_SYNC 1</code></p><p>По умолчанию отключено. При включении добавляются SYNC OUT, меню SYNC, делитель, инверсия полярности и EEPROM-настройки.</p></article>
+<article class="card"><h3>A1 Double Click</h3><p><code>// #define ENABLE_A1_DOUBLECLICK 1</code></p><p>Дополнительная функция: двойной клик A1 выполняет запуск с начала: SPP = 0 + MIDI Start.</p></article>
+<article class="card"><h3>Beat Indicator</h3><p><code>// #define ENABLE_BEAT_SEG 1</code></p><p>Опциональный фазовый индикатор: раз в такт мигает средний сегмент <strong>SEG_G</strong> первой цифры слева.</p></article>
+</div></div></section>
+
+<section id="contacts"><div class="wrap"><h2>Контакты</h2><div class="contact">
+<div class="card"><h3>Автор</h3><p style="font-size:1.3rem;font-weight:700">Michael Sinitsin</p><p style="color:var(--muted)">Авторская разработка MIDI master clock и DIY-проектов для музыкальной электроники.</p></div>
+<div class="card"><ul class="contact-list">
+<li><span class="label">Email</span><a href="mailto:sinitsinmike@yahoo.com">sinitsinmike@yahoo.com</a></li>
+<li><span class="label">Email</span><a href="mailto:michaelsinitsin@mail.ru">michaelsinitsin@mail.ru</a></li>
+<li><span class="label">Телефон</span><a href="tel:+79856041070">+7 (985) 604-10-70</a></li>
+<li><span class="label">Telegram</span><a href="https://t.me/Miharussian" target="_blank" rel="noopener">@Miharussian</a></li>
+<li><span class="label">Telegram группа</span><a href="https://t.me/SamodelnieSintezotory" target="_blank" rel="noopener">@SamodelnieSintezotory</a></li>
+<li><span class="label">VK</span><a href="https://vk.com/michaelsinitsin" target="_blank" rel="noopener">vk.com/michaelsinitsin</a></li>
+<li><span class="label">Avito</span><a href="https://www.avito.ru/brands/9d6afa796500fd0747cbfbc1f8305452" target="_blank" rel="noopener">Профиль Michael Sinitsin на Avito</a></li>
+</ul></div></div></div></section>
+</main>
+
+<footer><div class="wrap"><div>© 2026 Michael Sinitsin</div><div style="margin-top:6px">Проект: <a href="https://github.com/sinitsinmike/arduino-midi-clock" target="_blank" rel="noopener">github.com/sinitsinmike/arduino-midi-clock</a></div></div></footer>
+</body>
+</html>
